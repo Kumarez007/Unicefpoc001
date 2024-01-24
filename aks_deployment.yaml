@@ -1,0 +1,80 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: web-app
+  name: web-app
+  namespace: yct-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+        -
+          env:
+            - name: TZ
+              value: Asia/Amman
+            -
+              name: CUSTOMCONNSTR_DB_IP_ENV_VAR
+              valueFrom:
+                secretKeyRef:
+                  key: db-address
+                  name: yctsecrets
+            -
+              name: CUSTOMCONNSTR_DB_QA_NAME_ENV_VAR
+              valueFrom:
+                secretKeyRef:
+                  key: db-name
+                  name: yctsecrets
+            -
+              name: CUSTOMCONNSTR_DB_QA_USERNAME_ENV_VAR
+              valueFrom:
+                secretKeyRef:
+                  key: db-username
+                  name: yctsecrets
+            -
+              name: CUSTOMCONNSTR_DB_QA_PASSWORD_ENV_VAR
+              valueFrom:
+                secretKeyRef:
+                  key: db-password
+                  name: yctsecrets
+            -
+              name: CUSTOMCONNSTR_GATEWAY_DNS_NAME
+              valueFrom:
+                secretKeyRef:
+                  key: gateway-dns-name
+                  name: yctsecrets
+                  
+          image: "unipmudevacr.azurecr.io/dev/yct-web-app"
+          #image: "unipmudevacr.azurecr.io/yct-web-app:latest"
+          name: web-app
+          imagePullPolicy: Always
+          ports:
+            -
+              containerPort: 8080
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # annotations:
+  #   service.beta.kubernetes.io/azure-dns-label-name: yctwebappdev
+  name: web-app
+  namespace: yct-dev
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: web-app
+  type: NodePort
+

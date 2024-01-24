@@ -1,0 +1,92 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  - yct-dev  # branch names which will trigger a build
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  BuildConfiguration: 'release'
+  buildPlatform: 'anycpu'
+  system.debug: 'true'
+  dockerRegistryServiceConnection: 'PMU-DEV-ACR'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+
+  app: 'dev/yct-web-app'
+  imageRepository: '$(app)'
+  #tag: '37686'
+  tag: '$(Build.BuildId)'
+
+stages:
+
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: Build
+    displayName: Build
+    steps:
+    - task: MavenAuthenticate@0
+      inputs:
+        artifactsFeeds: 'yem-cash-transfer-feed'
+    - task: Maven@3
+      inputs:
+        goals: 'install'
+        mavenPomFile: 'pom.xml'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        testRunTitle: 'run.sh'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+        mavenAuthenticateFeed: true
+        effectivePomSkip: false
+        sonarQubeRunAnalysis: false
+        pmdRunAnalysis: true
+
+    - task: Docker@2
+      displayName: Build and push image
+      inputs:
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: $(dockerRegistryServiceConnection)
+        #imageName: '$(app):$(tag)'
+        tags: $(tag)
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/*.yaml'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'manifests'
+        publishLocation: 'Container'
+
+- stage: Deploy_Dev
+  displayName: 'Dev stage'
+  jobs:
+  - job: Dev
+    displayName: 'Deploy_dev'
+    steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'current'
+          artifactName: 'manifests'
+          itemPattern: '**/*.yaml'
+          targetPath: '$(System.ArtifactsDirectory)'
+
+      - task: KubernetesManifest@0
+        inputs:
+          action: 'deploy'
+          kubernetesServiceConnection: 'PMU-AKS-DEV-YCT-dev'
+          namespace: 'yct-dev'
+          manifests: '$(System.ArtifactsDirectory)/aks_deployment.yaml'
+          containers: 'unipmudevacr.azurecr.io/$(app):$(tag)'
